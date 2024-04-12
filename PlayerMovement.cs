@@ -5,6 +5,7 @@ using UnityEngine.AI;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
+using static UnityEditor.Timeline.TimelinePlaybackControls;
 
 public class PlayerMovement : MonoBehaviour
 {
@@ -19,17 +20,15 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField]
     private float jumpSpeed;
 
-    private float velocityJump;
-
-    [SerializeField]
-    private float gravity;
-
-    [SerializeField]
-    private float gravityMultiplier = 1;
-
     InputSystem inputActions;
     InputAction move;
 
+    //jump and gravity with character controller
+    [SerializeField]
+    private float gravity = -9.81f;
+    private Vector3 playerVelocity;
+
+    public bool isGrounded;
     private CharacterController conn;
     public bool isWalking;
 
@@ -47,7 +46,7 @@ public class PlayerMovement : MonoBehaviour
     public NavMeshAgent enemyObject;
 
     public GameObject pauseObject;
-
+    public GameObject pivot;
     void Awake()
     {
         conn = GetComponent<CharacterController>();
@@ -66,6 +65,7 @@ public class PlayerMovement : MonoBehaviour
         inputActions.Land.Pause.performed += OnGamePause;
         inputActions.PauseAction.Resume.performed += OnGameResume;
         move = inputActions.Land.Movement;
+        conn.enabled = true;
         inputActions.Enable();
     }
 
@@ -74,30 +74,20 @@ public class PlayerMovement : MonoBehaviour
         inputActions.Land.Jump.performed -= OnJump;
         inputActions.Land.Pause.performed -= OnGamePause;
         inputActions.PauseAction.Resume.performed -= OnGameResume;
+        conn.enabled = false;
         inputActions.Disable();
     }
 
     public void OnJump(InputAction.CallbackContext ctx)
     {
-        if (!ctx.started) return;
-        if (!IsGrounded()) return;
-        velocityJump += jumpSpeed;
-
-        if (ctx.performed)
+        if (ctx.performed && isGrounded)
         {
-            if (IsGrounded() && velocityJump < 0.0f)
-            {
-                velocityJump = -1.0f;
-            }
-            else
-            {
-                velocityJump += velocityJump * gravityMultiplier * Time.deltaTime;
-            }
+            float jumpVel = Mathf.Sqrt(jumpSpeed * -2 * gravity);
+            playerVelocity.y = jumpVel;
+            isGrounded = false;
+            Invoke("groundCoroutine", 2f);
         }
-        forceDirection.y = velocityJump;
     }
-
-    bool IsGrounded() => conn.isGrounded;
 
     void OnGamePause(InputAction.CallbackContext ctx)
     {
@@ -116,8 +106,8 @@ public class PlayerMovement : MonoBehaviour
     {
         if (pauseObject.activeInHierarchy && ctx.performed)
         {
-            movementSpeed = 4f;
-            jumpSpeed = 8f;
+            movementSpeed = 20f;
+            jumpSpeed = 5f;
             rotationSpeed = 360f;
             enemyScript.enabled = true;
             enemyObject.enabled = true;
@@ -125,18 +115,18 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
-    /*void groundCoroutine()
+    void groundCoroutine()
     {
-        IsGrounded();
+        isGrounded = true;
     }
 
     private void OnCollisionEnter(Collision collision)
     {
         if (collision.gameObject.CompareTag("Ground"))
         {
-            IsGrounded();
+            isGrounded = true;
         }
-    }*/
+    }
 
     void GameOver()
     {
@@ -145,18 +135,29 @@ public class PlayerMovement : MonoBehaviour
 
     void FixedUpdate()
     {
+
+        if (isGrounded && playerVelocity.y < 0)
+        {
+            playerVelocity.y = 0f;
+        }
+
         forceDirection += move.ReadValue<Vector2>().x * GetCameraRight(playerCamera) * movementSpeed;
         forceDirection += move.ReadValue<Vector2>().y * GetCameraForward(playerCamera) * movementSpeed;
 
         conn.SimpleMove(forceDirection * movementSpeed * Time.deltaTime);
         //rb.AddForce(forceDirection, ForceMode.Impulse);
         forceDirection = Vector3.zero;
-
+        
         //anim.SetBool("isWalking", isWalking);
 
         Vector3 horizontalVel = conn.velocity;
         horizontalVel.y = 0;
-        if(horizontalVel.sqrMagnitude > maxSpeed * maxSpeed)
+
+        //gravity of the player
+        playerVelocity.y += gravity * Time.deltaTime;
+        conn.Move(playerVelocity * Time.deltaTime);
+
+        if (horizontalVel.sqrMagnitude > maxSpeed * maxSpeed)
         {
             isWalking = true;
             //horizontalVel = horizontalVel.normalized * maxSpeed + Vector3.up * conn.velocity.y;
@@ -167,18 +168,25 @@ public class PlayerMovement : MonoBehaviour
             isWalking = false;
         }
 
-        Vector3 moveDirection = new Vector3(move.ReadValue<Vector2>().x, 0, move.ReadValue<Vector2>().y);
+        Vector3 moveDirection = transform.right * move.ReadValue<Vector2>().x + transform.forward * move.ReadValue<Vector2>().y;
         moveDirection.Normalize();
         float magnitude = moveDirection.magnitude;
         magnitude = Mathf.Clamp01(magnitude);
 
         //moveCharacter(forceDirection);
 
-        if (moveDirection != Vector3.zero)
+        if (move.ReadValue<Vector2>().x != 0 || move.ReadValue<Vector2>().y != 0)
         {
-            Quaternion toRotate = Quaternion.LookRotation(moveDirection, Vector3.up);
-            transform.rotation = Quaternion.RotateTowards(playerModel.transform.rotation, toRotate, rotationSpeed * Time.deltaTime);
+            transform.rotation = Quaternion.Euler(0f, pivot.transform.rotation.eulerAngles.y, 0f);
+            Quaternion toRotate = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
+            playerModel.transform.rotation = Quaternion.Slerp(playerModel.transform.rotation, toRotate, rotationSpeed * Time.deltaTime);
+            //transform.rotation = Quaternion.RotateTowards(playerModel.transform.rotation, toRotate, rotationSpeed * Time.deltaTime);
         }
+    }
+
+    private void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        isGrounded = hit.normal.y > 0.9f;
     }
 
     private Vector3 GetCameraRight(Camera playerCamera)
