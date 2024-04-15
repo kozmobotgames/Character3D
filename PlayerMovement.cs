@@ -34,7 +34,7 @@ public class PlayerMovement : MonoBehaviour
 
     public AudioSource enemySfx;
 
-    //public Animator anim;
+    public Animator anim;
 
     public Camera playerCamera;
 
@@ -147,8 +147,10 @@ public class PlayerMovement : MonoBehaviour
         conn.SimpleMove(forceDirection * movementSpeed * Time.deltaTime);
         //rb.AddForce(forceDirection, ForceMode.Impulse);
         forceDirection = Vector3.zero;
-        
+
         //anim.SetBool("isWalking", isWalking);
+
+        anim.SetBool("isGrounded", conn.isGrounded);
 
         Vector3 horizontalVel = conn.velocity;
         horizontalVel.y = 0;
@@ -160,12 +162,14 @@ public class PlayerMovement : MonoBehaviour
         if (horizontalVel.sqrMagnitude > maxSpeed * maxSpeed)
         {
             isWalking = true;
+            anim.SetBool("isWalking", true);
             //horizontalVel = horizontalVel.normalized * maxSpeed + Vector3.up * conn.velocity.y;
         }
 
         if (horizontalVel.magnitude == 0)
         {
             isWalking = false;
+            anim.SetBool("isWalking", false);
         }
 
         Vector3 moveDirection = transform.right * move.ReadValue<Vector2>().x + transform.forward * move.ReadValue<Vector2>().y;
@@ -178,8 +182,10 @@ public class PlayerMovement : MonoBehaviour
         if (move.ReadValue<Vector2>().x != 0 || move.ReadValue<Vector2>().y != 0)
         {
             transform.rotation = Quaternion.Euler(0f, pivot.transform.rotation.eulerAngles.y, 0f);
-            Quaternion toRotate = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
-            playerModel.transform.rotation = Quaternion.Slerp(playerModel.transform.rotation, toRotate, rotationSpeed * Time.deltaTime);
+            Quaternion rot = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
+            playerModel.transform.rotation = Quaternion.Slerp(playerModel.transform.rotation, rot, rotationSpeed * Time.deltaTime);
+
+            //Quaternion toRotate = Quaternion.LookRotation(moveDirection, Vector3.up);
             //transform.rotation = Quaternion.RotateTowards(playerModel.transform.rotation, toRotate, rotationSpeed * Time.deltaTime);
         }
     }
